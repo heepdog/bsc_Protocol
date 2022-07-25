@@ -72,7 +72,7 @@ class bscstream():
         log.info("looping for frames")
         while tries != 1 :
             frame = bscframe()
-            # log.info("waiting for inital comand code")
+            log.info("waiting for inital comand code")
             next_bit = link.read(1)
             
             if len(next_bit) == 0:
@@ -83,7 +83,7 @@ class bscstream():
             # if byte is a start of header character set header frame to true and read the next six chars as the header
             # should add a stream type to bscstream depending on the heading that was recieved
             # Assuming save header "02,001" initially
-            # log.info(f'Comparing {next_bit} to {SOH}')
+            log.info(f'Comparing {next_bit} to {SOH}')
             if int.from_bytes(next_bit,"little") == SOH:
                 log.info("got Header command code")
                 frame.header_frame = True
@@ -119,16 +119,17 @@ class bscstream():
                 # log.info(f'Recieved BCC: {frame.bcc}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum.to_bytes(length=2,byteorder="little",signed=False)}')
                 log.info(f'Recieved BCC: {int.from_bytes(frame.bcc, "little")}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum}')
                 self.append_frame(frame)
-                link.write([ACK,0x30] if (self.frame_count % 2==0) else [ACK, 0x31])
+                link.write(b'\x10\x30' if (self.frame_count % 2==0) else b'\x10\x31')
 
                 # self.frame_count += 1
             
             elif int.from_bytes(next_bit,"little") == ENQ:
                 log.info(f'Starting Frame Recieved ENQ: {next_bit}')
-                link.write([ACK,0x30])
+                link.write(b'\x10\x30')
                 
             elif int.from_bytes(next_bit,"little") == EOT:
                 log.info(f'Ending frame Recieved EOT: {next_bit}')
+                # link.write(b'\x10\x30')
                 break
             else:
                 pass
@@ -137,13 +138,21 @@ class bscstream():
         
         # Read transmission to decide what to do next
         if self.get_heading() == "02,001":
-            link.write(ENQ)
-            next_bit = link.read(2) # TODO: Error check for positive ACK
-            ack_str = b'\x0190,000\x020000\r\x03' # assumes all went properlittle
+            log.info("writing enq")
+            link.write(b'\x05')
+            next_bit = link.read(1) # TODO: Error check for positive ACK
+            log.info(f'recieved: {next_bit}')
+            next_bit = link.read(1) # TODO: Error check for positive ACK
+            log.info(f'recieved: {next_bit}')
+            ack_str = b'90,000\x020000\r\x03' # assumes all went properlittle
+            link.write(b'\x01')
             link.write(ack_str)
             link.write(getbcc(ack_str))
-            next_bit = link.read(2) # TODO: Error check for alternate ACK
-            link.write(EOT)
+            next_bit = link.read(1) # TODO: Error check for positive ACK
+            log.info(f'recieved: {next_bit}')
+            next_bit = link.read(1) # TODO: Error check for positive ACK
+            log.info(f'recieved: {next_bit}')
+            link.write(b'\x04')
             # TODO: Save texts from frames as file with filename from header frame text
             
             with open(self.get_header_text().strip(),'w') as fs:
@@ -230,7 +239,8 @@ def getlink() -> serial:
     port_id = input("Choose Port: ")
     
     port_id = int(port_id)
-    default_baud = 115200
+    # default_baud = 115200
+    default_baud = 9600
     default_stop = 1
     default_parity = serial.PARITY_NONE
     default_timeout = 15
@@ -256,7 +266,8 @@ def save_file():
     serial_link = getlink()
     stream = bscstream()
     serial_link.flushInput()
-    stream.get_stream(serial_link)
+    while(1):
+        stream.get_stream(serial_link)
     # stream.print_header()
     # stream.print_data()
     # fs = open(stream.get_header_text().strip(),'w')
