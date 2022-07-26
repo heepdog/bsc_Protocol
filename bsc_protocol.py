@@ -1,5 +1,6 @@
 #from curses.ascii import ENQ, EOT, ETB, NAK, SOH, STX, ETX, ACK
 import logging
+from time import sleep
 import serial
 import serial.tools.list_ports as ports
 
@@ -42,6 +43,11 @@ class bscstream():
         self.frame_count = 0
         self.last_ack = 1
         
+    def clear(self):
+        self.frames.clear()
+        self.frame_count = 0
+        self.last_ack = 1
+
     def append_frame(self, frame):
         self.frames.append(frame)
         self.frame_count += 1
@@ -128,7 +134,7 @@ class bscstream():
                 
                 log.info(len(frame.text))
                 frame.bcc = link.read(2)    # TODO: should add error handling for differing BCC
-                if frame.bcc != frame.bcc_sum:
+                if frame.bcc != frame.bcc_sum.to_bytes(length=2,byteorder="little",signed=False):
                     raise BccError(f'Bcc Errror - Recieved: {frame.bcc}, Calculated: {frame.bcc_sum}')
                 # log.info(f'Recieved BCC: {frame.bcc}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum.to_bytes(length=2,byteorder="little",signed=False)}')
                 # log.info(f'Recieved BCC: {int.from_bytes(frame.bcc, "little")}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum}')
@@ -148,7 +154,8 @@ class bscstream():
                 pass
                 # print(next_bit)
         # End of frame Here
-        
+        # if (next_bit == b""):
+        #     return
         # Read transmission to decide what to do next
         if self.get_heading() == "02,001":
             log.info("writing enq")
@@ -166,14 +173,16 @@ class bscstream():
             # next_bit = link.read(1) # TODO: Error check for positive ACK
             # log.info(f'recieved: {next_bit}')
             # next_bit = link.read(1) # TODO: Error check for positive ACK
+            sleep(1)
             self.get_ack(link)
-            log.info(f'recieved: {next_bit}')
+            # log.info(f'recieved: {next_bit}')
+            sleep(1)
             link.write(EOT)
             # TODO: Save texts from frames as file with filename from header frame text
             
             with open(self.get_header_text().strip() + '.JBI','w') as fs:
                 fs.write(self.get_data())
-            log.info("File Written")
+            log.info(f"File {self.get_header_text().strip() + '.JBI'} Written")
 
             
             
@@ -289,7 +298,7 @@ def getlink() -> serial:
     default_stop = 1
     default_parity = serial.PARITY_NONE
     default_timeout = 15
-    link = serial.Serial(available_ports[port_id-1].device, default_baud, parity = default_parity,timeout = default_timeout, stopbits = default_stop)
+    link = serial.Serial(available_ports[port_id-1].device, default_baud,parity = default_parity,timeout = default_timeout, stopbits = default_stop)
     link.flushInput()
     
     link.flush()
@@ -313,6 +322,7 @@ def save_file():
     serial_link.flushInput()
     while(1):
         stream.get_stream(serial_link)
+        stream.clear()
     # stream.print_header()
     # stream.print_data()
     # fs = open(stream.get_header_text().strip(),'w')
