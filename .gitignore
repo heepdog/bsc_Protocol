@@ -161,3 +161,7 @@ cython_debug/
 
 #motoman files
 *.JBI
+*.JBR
+*.CND
+*.DAT
+*.SYS
