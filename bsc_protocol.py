@@ -1,8 +1,19 @@
-from curses.ascii import ENQ, EOT, ETB, NAK, SOH, STX, ETX, ACK
+#from curses.ascii import ENQ, EOT, ETB, NAK, SOH, STX, ETX, ACK
 import logging
 import serial
 import serial.tools.list_ports as ports
 
+SOH = b'\x01'
+STX = b'\x02'
+ETX = b'\x03'
+EOT = b'\x04'
+ENQ = b'\x05'
+DLE = b'\x10'
+ACK = b'\x10'
+ACK0 = b'\x10\x30'
+ACK1 = b'\x10\x31'
+NAK = b'\x15'
+ETB = b'\x17'
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("BSC_LOG")
@@ -29,6 +40,7 @@ class bscstream():
        
         self.frames = list()
         self.frame_count = 0
+        self.last_ack = 1
         
     def append_frame(self, frame):
         self.frames.append(frame)
@@ -84,7 +96,7 @@ class bscstream():
             # should add a stream type to bscstream depending on the heading that was recieved
             # Assuming save header "02,001" initially
             log.info(f'Comparing {next_bit} to {SOH}')
-            if int.from_bytes(next_bit,"little") == SOH:
+            if next_bit == SOH:
                 log.info("got Header command code")
                 frame.header_frame = True
                 frame.heading = link.read(6)
@@ -97,18 +109,18 @@ class bscstream():
                 log.info(f'Next ctl char reiceved {next_bit}')
                 # TODO: error handling for error in next bit
             
-            if int.from_bytes(next_bit,"little") ==STX:
+            if next_bit ==STX:
                 log.info(f'Recieved stx: {next_bit}')
             
                 while True:
                     next_bit = link.read(1)
                     frame.bcc_sum += int.from_bytes(next_bit,"little")
                     # print(next_bit.decode("ascii"),end="",flush=True)
-                    if (int.from_bytes(next_bit,"little") == ETB):
+                    if (next_bit == ETB):
                         # getbcc(frame.text.extend(next_bit))
                         log.info(f'Got ETB: {next_bit}')
                         break
-                    elif (int.from_bytes(next_bit,"little") == ETX):
+                    elif (next_bit == ETX):
                         log.info(f'Got ETX: {next_bit}')
                         break
                     else:
@@ -116,20 +128,21 @@ class bscstream():
                 
                 log.info(len(frame.text))
                 frame.bcc = link.read(2)    # TODO: should add error handling for differing BCC
+                if frame.bcc != frame.bcc_sum:
+                    raise BccError(f'Bcc Errror - Recieved: {frame.bcc}, Calculated: {frame.bcc_sum}')
                 # log.info(f'Recieved BCC: {frame.bcc}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum.to_bytes(length=2,byteorder="little",signed=False)}')
-                log.info(f'Recieved BCC: {int.from_bytes(frame.bcc, "little")}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum}')
+                # log.info(f'Recieved BCC: {int.from_bytes(frame.bcc, "little")}; Computed BCC: {getbcc(frame.text)}; added BCC: {frame.bcc_sum}')
                 self.append_frame(frame)
-                link.write(b'\x10\x30' if (self.frame_count % 2==0) else b'\x10\x31')
+                link.write(ACK0 if (self.frame_count % 2==0) else ACK1)
 
-                # self.frame_count += 1
-            
-            elif int.from_bytes(next_bit,"little") == ENQ:
-                log.info(f'Starting Frame Recieved ENQ: {next_bit}')
-                link.write(b'\x10\x30')
                 
-            elif int.from_bytes(next_bit,"little") == EOT:
+            
+            elif next_bit == ENQ:
+                log.info(f'Starting Frame Recieved ENQ: {next_bit}')
+                link.write(ACK0)
+                
+            elif next_bit == EOT:
                 log.info(f'Ending frame Recieved EOT: {next_bit}')
-                # link.write(b'\x10\x30')
                 break
             else:
                 pass
@@ -139,23 +152,26 @@ class bscstream():
         # Read transmission to decide what to do next
         if self.get_heading() == "02,001":
             log.info("writing enq")
-            link.write(b'\x05')
-            next_bit = link.read(1) # TODO: Error check for positive ACK
+            link.write(ENQ)
+            # next_bit = link.read(1) # TODO: Error check for positive ACK
+            # log.info(f'recieved: {next_bit}')
+            # next_bit = link.read(1) # TODO: Error check for positive ACK
+            # log.info(f'recieved: {next_bit}')
+            self.get_ack(link)
+            ack_str = b'90,000\x020000\r\x03' # assumes all went properly
+            # link.write(SOH)
+            # link.write(ack_str)
+            # link.write(getbcc(ack_str))
+            self.send_frame(link,SOH,ack_str)
+            # next_bit = link.read(1) # TODO: Error check for positive ACK
+            # log.info(f'recieved: {next_bit}')
+            # next_bit = link.read(1) # TODO: Error check for positive ACK
+            self.get_ack(link)
             log.info(f'recieved: {next_bit}')
-            next_bit = link.read(1) # TODO: Error check for positive ACK
-            log.info(f'recieved: {next_bit}')
-            ack_str = b'90,000\x020000\r\x03' # assumes all went properlittle
-            link.write(b'\x01')
-            link.write(ack_str)
-            link.write(getbcc(ack_str))
-            next_bit = link.read(1) # TODO: Error check for positive ACK
-            log.info(f'recieved: {next_bit}')
-            next_bit = link.read(1) # TODO: Error check for positive ACK
-            log.info(f'recieved: {next_bit}')
-            link.write(b'\x04')
+            link.write(EOT)
             # TODO: Save texts from frames as file with filename from header frame text
             
-            with open(self.get_header_text().strip(),'w') as fs:
+            with open(self.get_header_text().strip() + '.JBI','w') as fs:
                 fs.write(self.get_data())
             log.info("File Written")
 
@@ -166,16 +182,18 @@ class bscstream():
             filename = self.get_header_text().strip()
             log.info(f'Sending File: {filename}')
             link.write(ENQ)
-            link.read(2)    # TODO: should add error handling for NAK
+            link.read(1)    # TODO: should add error handling for NAK
+            link.read(1)    # TODO: should add error handling for NAK
             send_string = bytearray(b'02,001\x02')
             send_string.extend(bytearray(self.get_header_text(),"UTF-8"))
-            send_string.extend(ETB.to_bytes(1,"little"))
-            link.write(SOH)
-            link.write(send_string)
-            link.write(getbcc(send_string))
+            send_string.extend(ETB)
+            # link.write(SOH)
+            # link.write(send_string)
+            # link.write(getbcc(send_string))
+            self.send_frame(link,SOH,send_string)
             link.read(2)    # TODO: should add error handling for NAK
             
-            with open(filename, "rb") as fd:
+            with open(filename + '.JBI', "rb") as fd:
                 eof = False
                 file_size = LengthOfFile(fd)
                 log.info(f'filesize: {file_size}')
@@ -183,18 +201,21 @@ class bscstream():
                     send_data = fd.read(256)
                     # if len(send_data)<256:
                     if fd.tell() == file_size:
-                        Bytestr = send_data+ETX.to_bytes(1,"little")
+                        Bytestr = send_data+ETX
                         eof = True
                     else:
-                        Bytestr = send_data+ETB.to_bytes(1,"little")
+                        Bytestr = send_data+ETB
                         # log.info(Bytestr)
 
                     if send_data:
-                        link.write(STX)
-                        link.write(Bytestr)
-                        link.write(getbcc(Bytestr))
+                        # link.write(STX)
+                        # link.write(Bytestr)
+                        # link.write(getbcc(Bytestr))
+                        self.send_frame(link,STX,Bytestr)
                         # log.info(f'{STX:02x},{Bytestr.hex(",")},{getbcc(Bytestr).hex(",")}')
-                    link.read(2) # TODO: should add error handling for NAK
+                    # link.read(1) # TODO: should add error handling for NAK
+                    # link.read(1) # TODO: should add error handling for NAK
+                    self.get_ack()
             # Done sending file
             link.write(EOT)
             
@@ -202,6 +223,30 @@ class bscstream():
             pass
         else:
             print(f'Unknown Header {self.get_heading()}')
+            
+            
+    def send_frame(self, link, cmd, data):
+        link.write(cmd)
+        link.write(data)
+        link.write(getbcc(data))
+        
+    def get_ack(self, link):
+        ack_val = link.read(1)
+        if ack_val == ACK:
+            ack_val = link.read(1)
+            if ack_val != self.last_ack:
+                self.last_ack = ack_val
+            else:
+                raise SendError("ACK Order Error")
+        elif ack_val == NAK:
+            raise SendError("NAK Recieved")
+        else:
+            raise SendError(f'Expecting ACK, Recieved {ack_val}')
+        
+class SendError(Exception):
+    pass
+class BccError(Exception):
+    pass
 
             
 def getbcc(datastring) -> bytes:
