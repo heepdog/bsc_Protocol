@@ -198,7 +198,7 @@ class bscstream():
                 frame.bcc_sum += int.from_bytes(next_bit,"little")
                 # TODO: error handling for error in next bit
             
-            if next_bit ==STX:
+            if next_bit == STX:
                 log.info(f'Recieved stx: {next_bit}')
             
                 while True:
@@ -232,7 +232,11 @@ class bscstream():
                 pass
                 # print(next_bit)
         # End of frame Here
+        if len(self.frames) != 0:
+            self.process_frames(link)
 
+
+    def process_frames(self, link : serial):
         # Read transmission Header to decide what to do next
         pri,sec = self.get_heading().split(',')
         if pri == '02':
@@ -261,7 +265,7 @@ class bscstream():
             elif sec == "052":
                 self.send_file(link,  self.get_header_text().strip(), ".JBR")
             else:
-                print(f'Unhandled Header {self.get_heading}')
+                print(f'Unhandled Header {self.get_heading()}')
         else:
             print(f'Unknown Header {self.get_heading()}')
             
