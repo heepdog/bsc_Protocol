@@ -116,7 +116,7 @@ class bscstream():
             if frame.header_frame:
                 print(f"Heading: {frame.heading}  Text: {frame.text}")
                 
-    def get_header_text(self) -> str:
+    def get_header_text(self, as_bytes=False):
         """Finds Header frame and returns the data
 
         Returns:
@@ -124,7 +124,10 @@ class bscstream():
         """
         for frame in self.frames:
             if frame.header_frame:
-                return frame.text.decode('UTF-8')
+                if as_bytes:
+                    return frame.text
+                else:
+                    return frame.text.decode('UTF-8')
     
     def get_heading(self) -> str:
         """Finds header frame and returns the heading
@@ -304,7 +307,7 @@ class bscstream():
         link.write(ENQ)
         self.get_ack()
         send_string = bytearray(b'02,001\x02')
-        send_string.extend(bytearray(self.get_header_text(),"UTF-8"))
+        send_string.extend(self.get_header_text(as_bytes=True))
         send_string.extend(ETB)
         self.send_frame(link,SOH,send_string)
         self.get_ack()
