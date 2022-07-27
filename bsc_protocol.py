@@ -305,12 +305,12 @@ class bscstream():
         """
         log.info(f'Sending File: {filename}')
         link.write(ENQ)
-        self.get_ack()
+        self.get_ack(link)
         send_string = bytearray(b'02,001\x02')
         send_string.extend(self.get_header_text(as_bytes=True))
         send_string.extend(ETB)
         self.send_frame(link,SOH,send_string)
-        self.get_ack()
+        self.get_ack(link)
         with open(filename + ext, "rb") as fd:
             eof = False
             file_size = LengthOfFile(fd)
@@ -325,7 +325,7 @@ class bscstream():
 
                 if send_data:
                     self.send_frame(link,STX,Bytestr)
-                self.get_ack()
+                self.get_ack(link)
         # Done sending file
         link.write(EOT)
         
