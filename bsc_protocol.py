@@ -370,10 +370,18 @@ class BccError(Exception):
 
             
 def getbcc(datastring) -> bytes:
-        data = 0
-        for d in datastring:
-            data = data+int(d)
-        return data.to_bytes(length=2,byteorder="little",signed=False)
+    """Adds up all bytes passed to function and result
+
+    Args:
+        datastring (bytes): bytestring to be added up for error checking
+
+    Returns:
+        bytes: 2 byte response which is the sum of the bytes passed
+    """
+    data = 0
+    for d in datastring:
+        data = data+int(d)
+    return data.to_bytes(length=2,byteorder="little",signed=False)
 
 def LengthOfFile(f):
     """ Get the length of the file for a regular file (not a device file)"""
@@ -418,6 +426,9 @@ def getlink() -> serial:
 
     
 def bsc_transfer():
+    """Sets up the reiceving of the BSC-like data, seting up the serial port, and
+    looping through mutiple streams.
+    """
     serial_link = getlink()
     stream = bscstream()
     serial_link.flushInput()
