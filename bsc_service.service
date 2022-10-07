@@ -1,0 +1,10 @@
+[Unit]
+Description=Python BSC Service
+
+[Service]
+ExecStart=/home/heepdog/python/bsc_service.py
+KillSignal=SIGINT
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
